@@ -2447,9 +2447,6 @@
   "navigationPanel.metaUpdated": {
     "defaultMessage": "Updated"
   },
-  "navigationPanel.moreSessionOptions": {
-    "defaultMessage": "More options"
-  },
   "navigationPanel.noChats": {
     "defaultMessage": "No recent chats"
   },

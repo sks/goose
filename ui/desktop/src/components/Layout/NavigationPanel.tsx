@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
-import { AudioLines, ChevronDown, ChevronRight, Ellipsis, Archive, Trash2 } from 'lucide-react';
+import { AudioLines, ChevronDown, ChevronRight, Archive, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigationContext } from './NavigationContext';
 import { useConfig } from '../ConfigContext';
@@ -24,12 +24,6 @@ import { acpChatSessionActions } from '../../acp/chatSessionStore';
 import { cancelAcpPermissionRequestsForSession } from '../../acp/permissionRequests';
 import { cancelAcpElicitationRequestsForSession } from '../../acp/elicitationRequests';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/Tooltip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 import { toast } from 'react-toastify';
 import { errorMessage } from '../../utils/conversionUtils';
@@ -101,10 +95,6 @@ const i18n = defineMessages({
   cancel: {
     id: 'navigationPanel.cancel',
     defaultMessage: 'Cancel',
-  },
-  moreSessionOptions: {
-    id: 'navigationPanel.moreSessionOptions',
-    defaultMessage: 'More options',
   },
   archiveSession: {
     id: 'navigationPanel.archiveSession',
@@ -323,28 +313,29 @@ const SessionRow: React.FC<SessionRowProps> = ({
             />
           )}
           <SessionIndicators isStreaming={isStreaming} hasUnread={hasUnread} hasError={hasError} />
-          <DropdownMenu onOpenChange={(open) => open && setTooltipOpen(false)}>
-            <DropdownMenuTrigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="p-1 rounded-full hover:bg-background-tertiary text-text-secondary hover:text-text-primary flex-shrink-0 opacity-0 group-hover:opacity-100 has-data-[state=open]:opacity-100 transition-opacity"
-                aria-label={intl.formatMessage(i18n.moreSessionOptions)}
-                title={intl.formatMessage(i18n.moreSessionOptions)}
-              >
-                <Ellipsis className="w-4 h-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onSelect={handleArchive} disabled={isStreaming}>
-                <Archive className="w-3.5 h-3.5 mr-2" />
-                {intl.formatMessage(i18n.archiveSession)}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setShowDeleteConfirmation(true)}>
-                <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500" />
-                {intl.formatMessage(i18n.deleteSession)}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleArchive();
+            }}
+            disabled={isStreaming}
+            className="p-1 rounded-full hover:bg-background-tertiary text-text-secondary hover:text-text-primary flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label={intl.formatMessage(i18n.archiveSession)}
+            title={intl.formatMessage(i18n.archiveSession)}
+          >
+            <Archive className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDeleteConfirmation(true);
+            }}
+            className="p-1 rounded-full hover:bg-red-500/10 text-text-secondary hover:text-red-500 flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            aria-label={intl.formatMessage(i18n.deleteSession)}
+            title={intl.formatMessage(i18n.deleteSession)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </TooltipTrigger>
       <TooltipContent side="right" align="start" className="max-w-xs text-left">
