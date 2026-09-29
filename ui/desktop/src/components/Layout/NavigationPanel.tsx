@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
-import { AudioLines, ChevronDown, ChevronRight } from 'lucide-react';
+import { AudioLines, ChevronDown, ChevronRight, Ellipsis, Archive, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigationContext } from './NavigationContext';
 import { useConfig } from '../ConfigContext';
@@ -14,8 +14,25 @@ import {
 import { AppEvents } from '../../constants/events';
 import { InlineEditText } from '../common/InlineEditText';
 import { SessionIndicators } from '../SessionIndicators';
-import { acpRenameSession, type SessionListItem } from '../../acp/sessions';
+import {
+  acpArchiveSession,
+  acpDeleteSession,
+  acpRenameSession,
+  type SessionListItem,
+} from '../../acp/sessions';
+import { acpChatSessionActions } from '../../acp/chatSessionStore';
+import { cancelAcpPermissionRequestsForSession } from '../../acp/permissionRequests';
+import { cancelAcpElicitationRequestsForSession } from '../../acp/elicitationRequests';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/Tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
+import { ConfirmationModal } from '../ui/ConfirmationModal';
+import { toast } from 'react-toastify';
+import { errorMessage } from '../../utils/conversionUtils';
 import { formatMessageTimestamp } from '../../utils/timeUtils';
 import { cn } from '../../utils';
 import type { ProjectGroup } from '../../utils/projectSessions';
@@ -81,6 +98,42 @@ const i18n = defineMessages({
     id: 'liveVoice.returnToActive',
     defaultMessage: 'Return to active Live voice',
   },
+  cancel: {
+    id: 'navigationPanel.cancel',
+    defaultMessage: 'Cancel',
+  },
+  moreSessionOptions: {
+    id: 'navigationPanel.moreSessionOptions',
+    defaultMessage: 'More options',
+  },
+  archiveSession: {
+    id: 'navigationPanel.archiveSession',
+    defaultMessage: 'Archive',
+  },
+  deleteSession: {
+    id: 'navigationPanel.deleteSession',
+    defaultMessage: 'Delete',
+  },
+  archiveSuccess: {
+    id: 'navigationPanel.archiveSuccess',
+    defaultMessage: 'Session archived',
+  },
+  archiveFailed: {
+    id: 'navigationPanel.archiveFailed',
+    defaultMessage: 'Failed to archive session: {error}',
+  },
+  deleteFailed: {
+    id: 'navigationPanel.deleteFailed',
+    defaultMessage: 'Failed to delete session: {error}',
+  },
+  deleteConfirmTitle: {
+    id: 'navigationPanel.deleteConfirmTitle',
+    defaultMessage: 'Delete Session',
+  },
+  deleteConfirmMessage: {
+    id: 'navigationPanel.deleteConfirmMessage',
+    defaultMessage: 'Are you sure you want to delete this session? This action cannot be undone.',
+  },
 });
 
 const navItemClass = (active: boolean) =>
@@ -119,6 +172,8 @@ interface SessionRowProps {
   status: SessionStatus | undefined;
   onClick: () => void;
   onRenamed: () => void;
+  onArchived: (sessionId: string) => void;
+  onDeleted: (sessionId: string) => void;
 }
 
 const formatTimestamp = (value?: string): string | null => {
@@ -175,13 +230,53 @@ const SessionRow: React.FC<SessionRowProps> = ({
   status,
   onClick,
   onRenamed,
+  onArchived,
+  onDeleted,
 }) => {
   const intl = useIntl();
   const [isEditing, setIsEditing] = useState(false);
   const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const isStreaming = status?.streamState === 'streaming';
   const hasError = status?.streamState === 'error';
   const hasUnread = status?.hasUnreadActivity ?? false;
+
+  const handleArchive = useCallback(async () => {
+    try {
+      await acpArchiveSession(session.id);
+      window.dispatchEvent(
+        new CustomEvent(AppEvents.SESSION_ARCHIVED, { detail: { sessionId: session.id } })
+      );
+      toast.success(intl.formatMessage(i18n.archiveSuccess));
+      onArchived(session.id);
+    } catch (error) {
+      toast.error(
+        intl.formatMessage(i18n.archiveFailed, {
+          error: errorMessage(error, 'Unknown error'),
+        })
+      );
+    }
+  }, [session.id, onArchived, intl]);
+
+  const handleDelete = useCallback(async () => {
+    setShowDeleteConfirmation(false);
+    try {
+      await acpDeleteSession(session.id);
+      window.dispatchEvent(
+        new CustomEvent(AppEvents.SESSION_DELETED, { detail: { sessionId: session.id } })
+      );
+      cancelAcpPermissionRequestsForSession(session.id);
+      cancelAcpElicitationRequestsForSession(session.id);
+      acpChatSessionActions.deleteSnapshot(session.id);
+      onDeleted(session.id);
+    } catch (error) {
+      toast.error(
+        intl.formatMessage(i18n.deleteFailed, {
+          error: errorMessage(error, 'Unknown error'),
+        })
+      );
+    }
+  }, [session.id, onDeleted, intl]);
 
   const statusLabel = isStreaming
     ? intl.formatMessage(i18n.statusStreaming)
@@ -197,7 +292,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
         <div
           onClick={() => !isEditing && onClick()}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer text-sm',
+            'flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer text-sm group',
             'hover:bg-background-tertiary/60 transition-colors',
             active && 'bg-background-tertiary'
           )}
@@ -228,11 +323,43 @@ const SessionRow: React.FC<SessionRowProps> = ({
             />
           )}
           <SessionIndicators isStreaming={isStreaming} hasUnread={hasUnread} hasError={hasError} />
+          <DropdownMenu onOpenChange={(open) => open && setTooltipOpen(false)}>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded-full hover:bg-background-tertiary text-text-secondary hover:text-text-primary flex-shrink-0 opacity-0 group-hover:opacity-100 has-data-[state=open]:opacity-100 transition-opacity"
+                aria-label={intl.formatMessage(i18n.moreSessionOptions)}
+                title={intl.formatMessage(i18n.moreSessionOptions)}
+              >
+                <Ellipsis className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onSelect={handleArchive} disabled={isStreaming}>
+                <Archive className="w-3.5 h-3.5 mr-2" />
+                {intl.formatMessage(i18n.archiveSession)}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setShowDeleteConfirmation(true)}>
+                <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500" />
+                {intl.formatMessage(i18n.deleteSession)}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </TooltipTrigger>
       <TooltipContent side="right" align="start" className="max-w-xs text-left">
         <SessionTooltipContent session={session} statusLabel={statusLabel} />
       </TooltipContent>
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        title={intl.formatMessage(i18n.deleteConfirmTitle)}
+        message={intl.formatMessage(i18n.deleteConfirmMessage)}
+        confirmLabel={intl.formatMessage(i18n.deleteSession)}
+        cancelLabel={intl.formatMessage(i18n.cancel)}
+        confirmVariant="destructive"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirmation(false)}
+      />
     </Tooltip>
   );
 };
@@ -397,6 +524,8 @@ export const Navigation: React.FC<{
                             handleSessionClick(session.id);
                           }}
                           onRenamed={fetchSessions}
+                          onArchived={() => fetchSessions()}
+                          onDeleted={() => fetchSessions()}
                         />
                       ))}
                   </React.Fragment>
@@ -415,6 +544,8 @@ export const Navigation: React.FC<{
                     handleSessionClick(session.id);
                   }}
                   onRenamed={fetchSessions}
+                  onArchived={() => fetchSessions()}
+                  onDeleted={() => fetchSessions()}
                 />
               ))
             )}

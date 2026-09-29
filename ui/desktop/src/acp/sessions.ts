@@ -6,7 +6,11 @@ import {
   type NewSessionRequest,
   type SessionInfo,
 } from '@agentclientprotocol/sdk';
-import type { GooseExtension, SessionExportFormat, SessionImportSource } from '@aaif/goose-acp-client';
+import type {
+  GooseExtension,
+  SessionExportFormat,
+  SessionImportSource,
+} from '@aaif/goose-acp-client';
 import { getAcpClient } from './acpConnection';
 import type { ExtensionLoadResult } from '../types/extensions';
 import type { Session } from '../types/session';
@@ -273,6 +277,16 @@ export async function acpNewSession(
 export async function acpDeleteSession(sessionId: string): Promise<void> {
   const client = await getAcpClient();
   await client.connection.agent.request(methods.agent.session.delete, { sessionId });
+}
+
+export async function acpArchiveSession(sessionId: string): Promise<void> {
+  const client = await getAcpClient();
+  await client.goose.sessionArchive_unstable({ sessionId });
+}
+
+export async function acpUnarchiveSession(sessionId: string): Promise<void> {
+  const client = await getAcpClient();
+  await client.goose.sessionUnarchive_unstable({ sessionId });
 }
 
 export async function acpCloseSession(sessionId: string): Promise<void> {

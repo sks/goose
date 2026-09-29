@@ -164,6 +164,11 @@ export function useNavigationSessions() {
         .catch((error) => console.error('Failed to fetch sessions:', error));
     };
 
+    const handleSessionArchived = (event: Event) => {
+      const { sessionId } = (event as CustomEvent<{ sessionId: string }>).detail;
+      setRecentSessions((prev) => prev.filter((session) => session.id !== sessionId));
+    };
+
     const handleSessionRenamed = (event: Event) => {
       const { sessionId, newName, userInitiated } = (
         event as CustomEvent<{ sessionId: string; newName: string; userInitiated?: boolean }>
@@ -180,10 +185,12 @@ export function useNavigationSessions() {
 
     window.addEventListener(AppEvents.SESSION_DELETED, handleSessionDeleted);
     window.addEventListener(AppEvents.SESSION_RENAMED, handleSessionRenamed);
+    window.addEventListener(AppEvents.SESSION_ARCHIVED, handleSessionArchived);
 
     return () => {
       window.removeEventListener(AppEvents.SESSION_DELETED, handleSessionDeleted);
       window.removeEventListener(AppEvents.SESSION_RENAMED, handleSessionRenamed);
+      window.removeEventListener(AppEvents.SESSION_ARCHIVED, handleSessionArchived);
     };
   }, []);
 

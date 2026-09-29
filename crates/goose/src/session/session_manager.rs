@@ -2089,6 +2089,8 @@ impl SessionStorage {
         if !keywords.is_empty() {
             where_clauses.push(message_keyword_clause(keywords.len()));
         }
+        // Archived sessions are soft-deleted and must not appear in any session list.
+        where_clauses.push("s.archived_at IS NULL".to_string());
         if query.cursor.is_some() {
             having_clauses.push(format!(
                 "({sort_timestamp_sql} < ? OR ({sort_timestamp_sql} = ? AND s.id < ?))"
@@ -3687,6 +3689,44 @@ mod tests {
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].session_id, newer_noise);
         assert_eq!(results.results[0].messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_archived_sessions_are_excluded_from_lists() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = SessionManager::new(temp_dir.path().to_path_buf());
+
+        let visible = create_search_session(
+            &sm,
+            "Visible session",
+            SessionType::User,
+            "2026-05-01T00:00:00Z",
+            &[("visible message", "2026-05-01T00:00:00Z")],
+        )
+        .await;
+
+        let archived = create_search_session(
+            &sm,
+            "Archived session",
+            SessionType::User,
+            "2026-05-02T00:00:00Z",
+            &[("archived message", "2026-05-02T00:00:00Z")],
+        )
+        .await;
+
+        sm.update(&archived)
+            .archived_at(Some(Utc::now()))
+            .apply()
+            .await
+            .unwrap();
+
+        let listed = sm
+            .list_sessions_by_types(&[SessionType::User])
+            .await
+            .unwrap();
+        let ids: Vec<&str> = listed.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&visible.as_str()));
+        assert!(!ids.contains(&archived.as_str()));
     }
 
     async fn expected_session_list_ids(sm: &SessionManager, session_ids: &[String]) -> Vec<String> {
